@@ -1,0 +1,20 @@
+{
+    "manifest_version": 3,
+    "name": "FB Group Post Detector",
+    "version": "1.0",
+    "description": "Detects posts in FB groups and suggests replies.",
+    "permissions": ["activeTab", "scripting", "storage"],
+    "content_scripts": [
+      {
+        "matches": ["https://www.facebook.com/groups/*"],
+        "js": ["content.js"]
+      }
+    ],
+    "icons": {
+      "48": "icon.png"
+    },
+    "action": {
+      "default_title": "FB Group Helper"
+    }
+  }
+  
