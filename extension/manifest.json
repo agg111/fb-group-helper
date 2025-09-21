@@ -14,7 +14,14 @@
       "48": "icon.png"
     },
     "action": {
-      "default_title": "FB Group Helper"
-    }
+      "default_title": "FB Group Helper",
+      "default_popup": "popup.html"
+    },
+    "web_accessible_resources": [
+      {
+        "resources": ["config.js"],
+        "matches": ["https://www.facebook.com/*"]
+      }
+    ]
   }
   

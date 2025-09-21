@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FB Group Helper Criteria</title>
+  <style>
+    body { font-family: Arial; width: 250px; padding: 10px; }
+    label { display: block; margin-top: 8px; }
+    input, select { width: 100%; margin-top: 4px; padding: 4px; }
+    button { margin-top: 12px; padding: 6px; width: 100%; background: #1877f2; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h3>Set Criteria</h3>
+  <label>Locations (comma separated)</label>
+  <input id="locations" placeholder="North Beach, Pac Heights" />
+
+  <label>Max Budget ($)</label>
+  <input type="number" id="budget" placeholder="2000" />
+
+  <label>Room Type</label>
+  <select id="roomType">
+    <option value="private">Private</option>
+    <option value="shared">Shared</option>
+  </select>
+
+  <label>Move-in Date</label>
+  <input type="date" id="moveInDate" />
+
+  <button id="saveBtn">Save Criteria</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>
