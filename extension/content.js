@@ -1,18 +1,24 @@
 console.log("✅ FB Group Post Detector active now! Let's go!");
 
 const processedPosts = new WeakSet();
-
-// Load default intro message telling about yourself from config file
 let introMessage = "";
+let criteriaCache = null;
+
+// Queue + batching
+let postQueue = [];
+let processing = false;
+const INITIAL_BATCH = 5;
+const BATCH_SIZE = 2;
+
+// Load intro message
 try {
-    // Try to load from config.js
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL('config.js');
-    script.onload = function() {
+    script.onload = function () {
         introMessage = window.introMessage || "";
         console.log("✅ Intro message loaded from config.js");
     };
-    script.onerror = function() {
+    script.onerror = function () {
         console.warn("⚠️ config.js not found, using default intro message");
         introMessage = "\n\n Happy to do on a quick call, let me know!";
     };
@@ -22,29 +28,21 @@ try {
     introMessage = "\n\n Happy to do on a quick call, let me know!";
 }
 
-
-// Selector for posts — use stable class prefix you observed
+// Selector for posts
 const postSelector = 'div[class^="x1yztbdb"]';
 
-// Keyword match (can expand later)
-function matchesCriteria(text) {
-    return /looking for|recommend|roommates|sublease/i.test(text);
-}
-
-// Inject UI button, LLM insights
+// Inject UI button + LLM insights
 function injectMessageUI(postNode, llmResult) {
     if (postNode.querySelector('.fb-helper-box')) return;
 
-    // Container for button + insights
     const box = document.createElement("div");
     box.className = "fb-helper-box";
-    box.style.background = "transparent"; // works with dark/light mode
+    box.style.background = "transparent";
     box.style.padding = "6px";
     box.style.marginTop = "6px";
     box.style.borderRadius = "8px";
     box.style.fontSize = "14px";
 
-    // Generate Reply button
     const btn = document.createElement("button");
     btn.innerText = "💬 Generate Reply";
     btn.style.cursor = "pointer";
@@ -55,19 +53,17 @@ function injectMessageUI(postNode, llmResult) {
     btn.style.borderRadius = "6px";
 
     btn.addEventListener("click", () => {
-        // append to the suggested message
         llmResult.suggestedMessage = llmResult.suggestedMessage + introMessage;
         navigator.clipboard.writeText(llmResult.suggestedMessage);
         alert(`✅ Message copied!\n\n${llmResult.suggestedMessage}`);
     });
 
-    // Insights div
     const insights = document.createElement("div");
     insights.className = "fb-helper-insights";
     insights.style.marginTop = "4px";
     insights.style.fontSize = "13px";
     insights.style.color = "#888";
-    insights.innerText = `Match: ${llmResult.matchScore}% | Good: ${llmResult.good} | Bad: ${llmResult.bad}`;
+    insights.innerText = `Match: ${llmResult.confidence}% | Good: ${llmResult.good} | Bad: ${llmResult.bad}`;
 
     box.appendChild(btn);
     box.appendChild(insights);
@@ -75,22 +71,8 @@ function injectMessageUI(postNode, llmResult) {
     console.log("✅ Button + LLM insights injected into post");
 }
 
-
-function generateMessage(postText) {
-    const trimmed = postText.slice(0, 100).replace(/\s+/g, ' ');
-    return `Hey! I saw your post: "${trimmed}..." – happy to get on a quick call, let me know!`;
-}
-
-function isCommentBlock(postNode) {
-    // Quick heuristic: if it has a "Reply" button or is inside a comments container
-    const text = postNode.innerText.toLowerCase();
-    if (postNode.closest('[aria-label="Comments"]')) return true;
-    if (text.includes("like") && text.includes("reply") && text.length < 200) return true;
-    return false;
-}
-
-// Process post
-async function processPost(post, criteria) {
+// Process a single post
+async function processPost(post) {
     if (processedPosts.has(post)) return;
     processedPosts.add(post);
 
@@ -102,13 +84,13 @@ async function processPost(post, criteria) {
 
     if (!meaningfulText) return;
 
-    console.log("Processing post:", meaningfulText.slice(0,50));
+    console.log("Processing post:", meaningfulText.slice(0, 50));
 
     try {
         const res = await fetch("http://127.0.0.1:8000/analyzePost", {
             method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ postText: meaningfulText, criteria })
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ postText: meaningfulText, criteria: criteriaCache })
         });
         const llmResult = await res.json();
 
@@ -123,8 +105,40 @@ async function processPost(post, criteria) {
     }
 }
 
+// Queue posts for batched processing
+function queuePost(post) {
+    postQueue.push(post);
+    processQueue();
+}
 
-// Fetch all posts from feed
+async function processQueue() {
+    if (processing) return;
+    processing = true;
+
+    while (postQueue.length > 0) {
+        const batch = postQueue.splice(0, BATCH_SIZE);
+        await Promise.all(batch.map(processPost));
+        await new Promise(resolve => setTimeout(resolve, 400)); // small delay
+    }
+
+    processing = false;
+}
+
+// Observe posts as they scroll into view
+function watchPosts(posts) {
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                queuePost(entry.target);
+                observer.unobserve(entry.target); // process once
+            }
+        });
+    }, { rootMargin: "300px" });
+
+    posts.forEach(post => observer.observe(post));
+}
+
+// Process feed lazily
 function processFeed() {
     const feed = document.querySelector('div[role="feed"]');
     if (!feed) {
@@ -132,36 +146,37 @@ function processFeed() {
         return;
     }
 
-    chrome.storage.local.get('criteria', ({criteria}) => {
-        if (!criteria) return console.warn("⚠️ No criteria found");
-    
-        const feed = document.querySelector('div[role="feed"]');
-        if (!feed) return;
-    
-        // Process existing posts
-        const posts = Array.from(feed.querySelectorAll(postSelector));
-        posts.forEach(post => processPost(post, criteria));
-    
-        // Observe feed for new posts
-        const observer = new MutationObserver(() => {
-            const newPosts = Array.from(feed.querySelectorAll(postSelector))
-                .filter(p => !processedPosts.has(p));
-            newPosts.forEach(post => processPost(post, criteria));
-        });
-        observer.observe(feed, { childList: true, subtree: true });
+    chrome.storage.local.get('criteria', ({ criteria }) => {
+        if (!criteria) {
+            console.warn("⚠️ No criteria found");
+            return;
+        }
+
+        criteriaCache = criteria; // cache once
+
+        const posts = Array.from(feed.querySelectorAll(postSelector))
+            .filter(p => !processedPosts.has(p));
+
+        console.log(`📌 Found ${posts.length} potential posts in feed`);
+
+        // Observe all posts but only process first N immediately
+        const initialPosts = posts.slice(0, INITIAL_BATCH);
+        const lazyPosts = posts.slice(INITIAL_BATCH);
+
+        initialPosts.forEach(queuePost);
+        watchPosts(lazyPosts);
     });
 }
 
-
-// Initial processing
+// Initial run
 processFeed();
 
-// Observe feed for changes and re-run
+// Watch for new posts being added
 const feed = document.querySelector('div[role="feed"]');
 if (feed) {
     const observer = new MutationObserver(() => {
         console.log("👀 Mutation detected, reprocessing feed...");
-        setTimeout(processFeed, 200); // small delay to allow FB DOM render
+        processFeed();
     });
 
     observer.observe(feed, { childList: true, subtree: true });

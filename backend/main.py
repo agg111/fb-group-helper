@@ -28,33 +28,42 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/analyzePost")
 async def analyze_post(req: AnalyzeRequest):
+    print("Criteria: ", req.criteria)
+    print("Post: ", req.postText)
     prompt = f"""
-Given this post:
-"{req.postText}"
+        You are helping find a room in SF given the criteria : {req.criteria}.
+        Analyze the post: {req.postText} and return a JSON with fields: confidence, good, bad, suggestedMessage.
+            - confidence: 0 to 100 (how well this post aligns the criteria)
+            - good: a short summary of what's good in 4-5 words
+            - bad: a short summary of what's not good in 4-5 words
+            - suggestedMessage: Generate a message 2-3 sentences highliting the good points to reach out only if the confidence is above 50. 
+        Respond only with valid JSON. No markdown, no commentary.
+    """
+    # prompt = f"""
+# You are helping me find housing posts where someone is looking for a roommate or subletter.
 
-and the user's criteria:
-{json.dumps(req.criteria, indent=2)}
+# Given the Criteria: {req.criteria} and the Post: "{req.postText}"
+# Build a JSON with fields: confidence, good, bad, suggestedMessage.
+# Follow the instructions below for the fields - 
+# If the post is about subletting, renting out a room or finding a roommate, return the following fields - 
+#     - confidence: 0 to 100 (how well this post aligns the criteria)
+#     - good: a short summary of what's good in 4-5 words
+#     - bad: a short summary of what's not good in 4-5 words
+#     - suggestedMessage: Generate a message to reach out only if the confidence is above 50. 
+#     Keep the suggestedMessage positive, friendly in 2-3 sentences.
+#     Mention that you are excited to explore the locality of the sublease.
+#     For example - 
+#     Hi Amy! I saw your post, I am interested in the sublease. I am excited to explore the North beach area.
+#     I am looking for a sublease in the area of {req.criteria['location']}.
+#     The move in date works for me. 
+# Else if the post is about someone looking for a sublease or someone moved to SF, return the following fields - 
+#     - confidence: 0
+#     - good: Not relevant
+#     - bad: Not relevant
+#     - suggestedMessage: Post isnt't by a subletter, so no need to reach out.
 
-Identify if the post is about sublease being listed, if so return a JSON object with:
-- matchScore: 0-100 %
-- good: What is good about the post in 3-4 words
-- bad: What is bad about the post in 3-4 words
-- suggestedMessage: Generate a message to reach out only if the matchScore is above 50%. 
-Keep the message positive, friendly in 5-6 sentences, structured into paragraphs separated by two newlines. 
-Mention that you are excited to explore the locality of the sublease is located in.
-For example,
-Hi Amy! I saw your post, I am interested in the sublease. I am excited to explore the North beach area.
-I am looking for a sublease in the area of {req.criteria['location']} with a budget of {req.criteria['maxBudget']}.
-The move in date works for me. 
-
-If the post is about seaching for a sublease, it not relevant. In that case, return JSON object with:
-- matchScore: 0
-- good: Not relevant
-- bad: Not relevant
-- suggestedMessage: Post isnt't by a subletter, so no need to reach out
-
-Do NOT include any explanations or extra text. Ensure it is parsable by JSON.
-"""
+# Respond only with valid JSON. No markdown, no commentary.
+# """
     try:
         response = client.responses.create(
             model="gpt-4o-mini",
