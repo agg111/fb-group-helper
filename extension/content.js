@@ -71,10 +71,18 @@ function injectMessageUI(postNode, llmResult) {
     console.log("✅ Button + LLM insights injected into post");
 }
 
+function getPostUserName(post) {
+    const nameNode = post.querySelector('h2, h3, strong'); // approximate selector for poster name
+    return nameNode ? nameNode.innerText.trim() : "Unknown";
+}
+
 // Process a single post
 async function processPost(post) {
     if (processedPosts.has(post)) return;
     processedPosts.add(post);
+
+    const userName = getPostUserName(post);
+    console.log("Processing post by:", userName);
 
     const contentNodes = post.querySelectorAll('div[dir="auto"], span[dir="auto"]');
     const meaningfulText = Array.from(contentNodes)
@@ -105,8 +113,12 @@ async function processPost(post) {
     }
 }
 
+let postCounter = 0;
+
 // Queue posts for batched processing
 function queuePost(post) {
+    post.queueId = postCounter++;
+    console.log("Queueing post", post.queueId, getPostUserName(post));
     postQueue.push(post);
     processQueue();
 }
@@ -116,9 +128,9 @@ async function processQueue() {
     processing = true;
 
     while (postQueue.length > 0) {
-        const batch = postQueue.splice(0, BATCH_SIZE);
-        await Promise.all(batch.map(processPost));
-        await new Promise(resolve => setTimeout(resolve, 400)); // small delay
+        const post = postQueue.shift(); // take first post
+        await processPost(post);         // wait for backend result before next
+        await new Promise(resolve => setTimeout(resolve, 300)); // small delay
     }
 
     processing = false;
@@ -126,16 +138,18 @@ async function processQueue() {
 
 // Observe posts as they scroll into view
 function watchPosts(posts) {
-    const observer = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                queuePost(entry.target);
-                observer.unobserve(entry.target); // process once
-            }
-        });
-    }, { rootMargin: "300px" });
+    posts.forEach(post => {
+        const observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    queuePost(entry.target);
+                    observer.disconnect(); // remove observer for this post
+                }
+            });
+        }, { rootMargin: "300px" });
 
-    posts.forEach(post => observer.observe(post));
+        observer.observe(post);
+    });
 }
 
 // Process feed lazily

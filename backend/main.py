@@ -31,12 +31,12 @@ async def analyze_post(req: AnalyzeRequest):
     print("Criteria: ", req.criteria)
     print("Post: ", req.postText)
     prompt = f"""
-        You are helping find a room in SF given the criteria : {req.criteria}.
+        You are helping find a room in SF given the user's criteria for an apartment: {req.criteria}.
         Analyze the post: {req.postText} and return a JSON with fields: confidence, good, bad, suggestedMessage.
             - confidence: 0 to 100 (how well this post aligns the criteria)
             - good: a short summary of what's good in 4-5 words
             - bad: a short summary of what's not good in 4-5 words
-            - suggestedMessage: Generate a message 2-3 sentences highliting the good points to reach out only if the confidence is above 50. 
+            - suggestedMessage: Generate a message 1-2 sentences highlighting the good points to reach out only if the confidence is above 50. 
         Respond only with valid JSON. No markdown, no commentary.
     """
     # prompt = f"""
